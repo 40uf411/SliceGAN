@@ -16,30 +16,45 @@ def batch(data,type,l, sf):
         datasetxyz = []
         for img in data:
             img = plt.imread(img) if type != 'tif2D' else tifffile.imread(img)
+            print(img.shape)
             if len(img.shape)>2:
+                print('converting to grayscale')
                 img = img[:,:,0]
+                print("new: ", img.shape)
             img = img[::sf,::sf]
             x_max, y_max= img.shape[:]
             phases = np.unique(img)
-            data = np.empty([32 * 900, len(phases), l, l])
-            for i in range(32 * 900):
-                x = np.random.randint(1, x_max - l-1)
-                y = np.random.randint(1, y_max - l-1)
-                # create one channel per phase for one hot encoding
-                for cnt, phs in enumerate(phases):
-                    img1 = np.zeros([l, l])
-                    img1[img[x:x + l, y:y + l] == phs] = 1
-                    data[i, cnt, :, :] = img1
+            print('phases: ', phases)
+            # use torch (and cuda if available) and store masks as uint8 to save memory
+            device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+            n_samples = 32 * 900
+            phases_arr = np.array(phases)
+            n_phases = len(phases_arr)
+
+            # allocate uint8 array (1 byte per element) instead of default float64
+            data = np.zeros((n_samples, n_phases, l, l), dtype=np.uint8)
+
+            # vectorise random index generation
+            xs = np.random.randint(1, x_max - l - 1, size=n_samples)
+            ys = np.random.randint(1, y_max - l - 1, size=n_samples)
+
+            for i, (x, y) in enumerate(zip(xs, ys)):
+                patch = img[x:x + l, y:y + l]                      # shape (l, l)
+                # create one-hot-like channels by comparing patch to all phases at once
+                masks = (patch[None, :, :] == phases_arr[:, None, None]).astype(np.uint8)
+                data[i] = masks
 
             if Testing:
                 for j in range(7):
-                    plt.imshow(data[j, 0, :, :]+2*data[j, 1, :, :])
+                    plt.imshow(data[j, 0, :, :] + 2 * data[j, 1, :, :])
                     plt.pause(0.3)
                     plt.show()
                     plt.clf()
                 plt.close()
-            data = torch.FloatTensor(data)
-            dataset = torch.utils.data.TensorDataset(data)
+
+            # convert to torch tensor (keeps uint8 / byte type), move to GPU if available
+            tensor = torch.from_numpy(data).to(device)
+            dataset = torch.utils.data.TensorDataset(tensor)
             datasetxyz.append(dataset)
 
     elif type=='tif3D':
