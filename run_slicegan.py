@@ -32,9 +32,9 @@ img_channels = 3
 # greyscale. nphase can be, 'tif2D', 'png', 'jpg', tif3D, 'array')
 data_type = 'tif3D'
 # Path to your data. One string for isotrpic, 3 for anisotropic
-data_path = ['/export/home/aaouf/workspace/images/lemmens_slices/slice_x_0.tif',
-             '/export/home/aaouf/workspace/images/lemmens_slices/slice_y_0.tif',
-             '/export/home/aaouf/workspace/images/lemmens_slices/slice_z_0.tif']
+data_path = ['/export/home/aaouf/workspace/images/lemmens_slices/slice_x_center+0.tif',
+             '/export/home/aaouf/workspace/images/lemmens_slices/slice_y_center+0.tif',
+             '/export/home/aaouf/workspace/images/lemmens_slices/slice_z_center+0.tif']
 
 ## Network Architectures
 # Training image size, no. channels and scale factor vs raw data
