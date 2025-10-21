@@ -6,7 +6,7 @@ import torch.optim as optim
 import time
 import matplotlib
 
-def train(pth, imtype, datatype, real_data, Disc, Gen, nc, l, nz, sf):
+def train(pth, imtype, datatype, real_data, Disc, Gen, nc, l, nz, sf, verbose=False):
     """
     train the generator
     :param pth: path to save all files, imgs and data
@@ -19,17 +19,20 @@ def train(pth, imtype, datatype, real_data, Disc, Gen, nc, l, nz, sf):
     :param l: image size
     :param nz: latent vector size
     :param sf: scale factor for training data
+    :param verbose: if True, print detailed progress information (default: True)
     :return:
     """
-    print("\n=== Starting SliceGAN Training ===")
-    print(f"Parameters: image_type={imtype}, data_type={datatype}, channels={nc}, size={l}, latent_size={nz}, scale={sf}")
+    if verbose:
+        print("\n=== Starting SliceGAN Training ===")
+        print(f"Parameters: image_type={imtype}, data_type={datatype}, channels={nc}, size={l}, latent_size={nz}, scale={sf}")
     if len(real_data) == 1:
         real_data *= 3
         isotropic = True
     else:
         isotropic = False
 
-    print("\n=== Initializing Training Parameters ===")
+    if verbose:
+        print("\n=== Initializing Training Parameters ===")
     ## Constants for NNs
     matplotlib.use('Agg')
     ngpu = 1
@@ -50,15 +53,16 @@ def train(pth, imtype, datatype, real_data, Disc, Gen, nc, l, nz, sf):
     lz = 4
     ##Dataloaders for each orientation
     device = torch.device("cuda:0" if(torch.cuda.is_available() and ngpu > 0) else "cpu")
-    print(device, " will be used.\n")
-
-    print('\n=== Loading Dataset... ===')
-    print(f"Data paths: {real_data}")
+    if verbose:
+        print(device, " will be used.\n")
+        print('\n=== Loading Dataset... ===')
+        print(f"Data paths: {real_data}")
     try:
         dataset_xyz = preprocessing.batch(real_data, datatype, l, sf)
-        print(f"Dataset loaded successfully. Shape: {[len(d) for d in dataset_xyz]}")
+        if verbose:
+            print(f"Dataset loaded successfully. Shape: {[len(d) for d in dataset_xyz]}")
     except Exception as e:
-        print(f"ERROR loading dataset: {str(e)}")
+        print(f"ERROR loading dataset: {str(e)}")  # Always print errors
         raise
 
 
@@ -70,32 +74,37 @@ def train(pth, imtype, datatype, real_data, Disc, Gen, nc, l, nz, sf):
     dataloaderz = torch.utils.data.DataLoader(dataset_xyz[2], batch_size=batch_size,
                                               shuffle=True, num_workers=workers)
 
-    print("\n=== Creating Generator Network ===")
+    if verbose:
+        print("\n=== Creating Generator Network ===")
     try:
         # Create the Generator network
         netG = Gen().to(device)
         if ('cuda' in str(device)) and (ngpu > 1):
             netG = nn.DataParallel(netG, list(range(ngpu)))
         optG = optim.Adam(netG.parameters(), lr=lrg, betas=(beta1, beta2))
-        print("Generator created successfully")
+        if verbose:
+            print("Generator created successfully")
     except Exception as e:
-        print(f"ERROR creating generator: {str(e)}")
+        print(f"ERROR creating generator: {str(e)}")  # Always print errors
         raise
 
-    print("\n=== Creating Discriminator Networks ===")
+    if verbose:
+        print("\n=== Creating Discriminator Networks ===")
     # Define 1 Discriminator and optimizer for each plane in each dimension
     netDs = []
     optDs = []
     try:
         for i in range(3):
-            print(f"Creating discriminator {i+1}/3...")
+            if verbose:
+                print(f"Creating discriminator {i+1}/3...")
             netD = Disc()
             netD = (nn.DataParallel(netD, list(range(ngpu)))).to(device)
             netDs.append(netD)
             optDs.append(optim.Adam(netDs[i].parameters(), lr=lrd, betas=(beta1, beta2)))
-        print("All discriminators created successfully")
+        if verbose:
+            print("All discriminators created successfully")
     except Exception as e:
-        print(f"ERROR creating discriminator {i+1}: {str(e)}")
+        print(f"ERROR creating discriminator {i+1}: {str(e)}")  # Always print errors
         raise
 
     disc_real_log = []
@@ -103,30 +112,34 @@ def train(pth, imtype, datatype, real_data, Disc, Gen, nc, l, nz, sf):
     gp_log = []
     Wass_log = []
 
-    print("\n=== Starting Training Loop ===")
-    print(f"Training for {num_epochs} epochs")
+    if verbose:
+        print("\n=== Starting Training Loop ===")
+        print(f"Training for {num_epochs} epochs")
     # For each epoch
     start = time.time()
     for epoch in range(num_epochs):
-        print(f"\nEpoch {epoch+1}/{num_epochs}")
+        print(f"\nEpoch {epoch+1}/{num_epochs}")  # Always print epoch progress
         # sample data for each direction
         for i, (datax, datay, dataz) in enumerate(zip(dataloaderx, dataloadery, dataloaderz), 1):
-            if i % 10 == 0:  # Print every 10 iterations
+            if verbose and i % 10 == 0:  # Print every 10 iterations if verbose
                 print(f"  Batch {i}")
             dataset = [datax, datay, dataz]
             ### Initialise
             ### Discriminator
-            print("    Training discriminator...", end='\r')
+            if verbose:
+                print("    Training discriminator...", end='\r')
             ## Generate fake image batch with G
             try:
-                print("    Generating fake data batch...", end='\r')
+                if verbose:
+                    print("    Generating fake data batch...", end='\r')
                 noise = torch.randn(D_batch_size, nz, lz,lz,lz, device=device)
                 fake_data = netG(noise).detach()
                 
                 # for each dim (d1, d2 and d3 are used as permutations to make 3D volume into a batch of 2D images)
                 for dim, (netD, optimizer, data, d1, d2, d3) in enumerate(
                         zip(netDs, optDs, dataset, [2, 3, 4], [3, 2, 2], [4, 4, 3])):
-                    print(f"    Training discriminator {dim+1}/3...", end='\r')
+                    if verbose:
+                        print(f"    Training discriminator {dim+1}/3...", end='\r')
                     if isotropic:
                         netD = netDs[0]
                         optimizer = optDs[0]
@@ -144,8 +157,15 @@ def train(pth, imtype, datatype, real_data, Disc, Gen, nc, l, nz, sf):
                     disc_cost = out_fake - out_real + gradient_penalty
                     disc_cost.backward()
                     optimizer.step()
+                    
+                    # Print losses every batch when not verbose, or every 10 batches when verbose
+                    if not verbose or (verbose and i % 10 == 0):
+                        print(f"Epoch [{epoch+1}/{num_epochs}], Batch [{i}], D_Loss: {disc_cost.item():.4f}, "
+                              f"Wasserstein Distance: {(out_real.item() - out_fake.item()):.4f}, "
+                              f"GP: {gradient_penalty.item():.4f}")
+                        
             except Exception as e:
-                print(f"\nERROR in discriminator training: {str(e)}")
+                print(f"\nERROR in discriminator training: {str(e)}")  # Always print errors
                 raise
             #logs for plotting
             disc_real_log.append(out_real.item())
@@ -155,7 +175,8 @@ def train(pth, imtype, datatype, real_data, Disc, Gen, nc, l, nz, sf):
 
             ### Generator Training
             if i % int(critic_iters) == 0:
-                print("    Training generator...", end='\r')
+                if verbose:
+                    print("    Training generator...", end='\r')
                 try:
                     netG.zero_grad()
                     errG = 0
@@ -180,24 +201,28 @@ def train(pth, imtype, datatype, real_data, Disc, Gen, nc, l, nz, sf):
 
             # Output training stats & show imgs
             if i % 25 == 0:
-                print("\n=== Saving Checkpoint & Generating Samples ===")
+                if verbose:
+                    print("\n=== Saving Checkpoint & Generating Samples ===")
                 try:
                     netG.eval()
                     with torch.no_grad():
-                        print("  Saving model checkpoints...")
+                        if verbose:
+                            print("  Saving model checkpoints...")
                         torch.save(netG.state_dict(), pth + '_Gen.pt')
                         torch.save(netD.state_dict(), pth + '_Disc.pt')
                         
-                        print("  Generating sample images...")
+                        if verbose:
+                            print("  Generating sample images...")
                         noise = torch.randn(1, nz,lz,lz,lz, device=device)
                         img = netG(noise)
                         
                         ###Print progress
                         ## calc ETA
                         steps = len(dataloaderx)
-                        util.calc_eta(steps, time.time(), start, i, epoch, num_epochs)
+                        if verbose:
+                            util.calc_eta(steps, time.time(), start, i, epoch, num_epochs)
                         
-                        print("  Saving visualizations...")
+                            print("  Saving visualizations...")
                         ###save example slices
                         util.test_plotter(img, 5, imtype, pth)
                         # plotting graphs
@@ -205,8 +230,9 @@ def train(pth, imtype, datatype, real_data, Disc, Gen, nc, l, nz, sf):
                         util.graph_plot([Wass_log], ['Wass Distance'], pth, 'WassGraph')
                         util.graph_plot([gp_log], ['Gradient Penalty'], pth, 'GpGraph')
                 except Exception as e:
-                    print(f"\nERROR during checkpoint/visualization: {str(e)}")
+                    print(f"\nERROR during checkpoint/visualization: {str(e)}")  # Always print errors
                     raise
                 
-                print("  Resuming training...")
+                if verbose:
+                    print("  Resuming training...")
                 netG.train()
