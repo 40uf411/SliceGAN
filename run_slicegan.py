@@ -6,17 +6,19 @@ to generate a synthetic image using a trained generator.
 '''
 
 from slicegan import model, networks, util
-import argparse
+
 # Define project name
 Project_name = 'NMC'
 # Specify project folder.
 Project_dir = 'Trained_Generators'
-# Run with False to show an image during or after training
-parser = argparse.ArgumentParser()
-parser.add_argument('training', type=int)
-args = parser.parse_args()
-Training = args.training
-# Training = 0
+
+# Simple configuration: replace argparse with a small Config class.
+# Set `training` to 1 to run training, or 0 to run testing.
+class Config:
+    training = True
+
+config = Config()
+Training = config.training
 
 Project_path = util.mkdr(Project_name, Project_dir, Training)
 
@@ -30,7 +32,9 @@ img_channels = 3
 # greyscale. nphase can be, 'tif2D', 'png', 'jpg', tif3D, 'array')
 data_type = 'tif3D'
 # Path to your data. One string for isotrpic, 3 for anisotropic
-data_path = ['Examples/NMC.tif']
+data_path = ['/export/home/aaouf/workspace/images/lemmens_slices/slice_x_0.tif',
+             '/export/home/aaouf/workspace/images/lemmens_slices/slice_y_0.tif',
+             '/export/home/aaouf/workspace/images/lemmens_slices/slice_z_0.tif']
 
 ## Network Architectures
 # Training image size, no. channels and scale factor vs raw data
@@ -57,3 +61,4 @@ if Training:
     model.train(Project_path, image_type, data_type, data_path, netD, netG, img_channels, img_size, z_channels, scale_factor)
 else:
     img, raw, netG = util.test_img(Project_path, image_type, netG(), z_channels, lf=8, periodic=[0, 1, 1])
+
