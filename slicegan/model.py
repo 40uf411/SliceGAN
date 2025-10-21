@@ -29,15 +29,6 @@ def train(pth, imtype, datatype, real_data, Disc, Gen, nc, l, nz, sf):
     else:
         isotropic = False
 
-    print('\n=== Loading Dataset... ===')
-    print(f"Data paths: {real_data}")
-    try:
-        dataset_xyz = preprocessing.batch(real_data, datatype, l, sf)
-        print(f"Dataset loaded successfully. Shape: {[len(d) for d in dataset_xyz]}")
-    except Exception as e:
-        print(f"ERROR loading dataset: {str(e)}")
-        raise
-
     print("\n=== Initializing Training Parameters ===")
     ## Constants for NNs
     matplotlib.use('Agg')
@@ -60,6 +51,16 @@ def train(pth, imtype, datatype, real_data, Disc, Gen, nc, l, nz, sf):
     ##Dataloaders for each orientation
     device = torch.device("cuda:0" if(torch.cuda.is_available() and ngpu > 0) else "cpu")
     print(device, " will be used.\n")
+
+    print('\n=== Loading Dataset... ===')
+    print(f"Data paths: {real_data}")
+    try:
+        dataset_xyz = preprocessing.batch(real_data, datatype, l, sf)
+        print(f"Dataset loaded successfully. Shape: {[len(d) for d in dataset_xyz]}")
+    except Exception as e:
+        print(f"ERROR loading dataset: {str(e)}")
+        raise
+
 
     # D trained using different data for x, y and z directions
     dataloaderx = torch.utils.data.DataLoader(dataset_xyz[0], batch_size=batch_size,
