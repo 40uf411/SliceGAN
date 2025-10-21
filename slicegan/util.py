@@ -126,7 +126,7 @@ def test_plotter(img,slcs,imtype,pth):
     :param imtype: image type
     :param pth: where to save plot
     """
-    img = post_proc(img,imtype)[0]
+    img = post_proc(img,imtype)
     fig, axs = plt.subplots(slcs, 3)
     if imtype == 'colour':
         for j in range(slcs):
