@@ -159,7 +159,7 @@ def train(pth, imtype, datatype, real_data, Disc, Gen, nc, l, nz, sf, verbose=Fa
                     optimizer.step()
 
                     # Print losses every batch when not verbose, or every 3000 batches when verbose
-                    if not verbose or (verbose and i % 3000 == 0):
+                    if i % 3000 == 0:
                         print(f"Epoch [{epoch+1}/{num_epochs}], Batch [{i}], D_Loss: {disc_cost.item():.4f}, "
                               f"Wasserstein Distance: {(out_real.item() - out_fake.item()):.4f}, "
                               f"GP: {gradient_penalty.item():.4f}")
