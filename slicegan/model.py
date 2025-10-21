@@ -106,18 +106,17 @@ def train(pth, imtype, datatype, real_data, Disc, Gen, nc, l, nz, sf):
     print(f"Training for {num_epochs} epochs")
     # For each epoch
     start = time.time()
-    try:
-        for epoch in range(num_epochs):
-            print(f"\nEpoch {epoch+1}/{num_epochs}")
-            # sample data for each direction
-            for i, (datax, datay, dataz) in enumerate(zip(dataloaderx, dataloadery, dataloaderz), 1):
-                if i % 10 == 0:  # Print every 10 iterations
-                    print(f"  Batch {i}")
-                dataset = [datax, datay, dataz]
-                ### Initialise
-                ### Discriminator
-                print("    Training discriminator...", end='\r')
-                ## Generate fake image batch with G
+    for epoch in range(num_epochs):
+        print(f"\nEpoch {epoch+1}/{num_epochs}")
+        # sample data for each direction
+        for i, (datax, datay, dataz) in enumerate(zip(dataloaderx, dataloadery, dataloaderz), 1):
+            if i % 10 == 0:  # Print every 10 iterations
+                print(f"  Batch {i}")
+            dataset = [datax, datay, dataz]
+            ### Initialise
+            ### Discriminator
+            print("    Training discriminator...", end='\r')
+            ## Generate fake image batch with G
             try:
                 print("    Generating fake data batch...", end='\r')
                 noise = torch.randn(D_batch_size, nz, lz,lz,lz, device=device)
@@ -135,23 +134,24 @@ def train(pth, imtype, datatype, real_data, Disc, Gen, nc, l, nz, sf):
                     real_data = data[0].to(device)
                     out_real = netD(real_data).view(-1).mean()
                     ## train on fake images
+                    # perform permutation + reshape to turn volume into batch of 2D images to pass to D
+                    fake_data_perm = fake_data.permute(0, d1, 1, d2, d3).reshape(l * D_batch_size, nc, l, l)
+                    out_fake = netD(fake_data_perm).mean()
+                    gradient_penalty = util.calc_gradient_penalty(netD, real_data, fake_data_perm[:batch_size],
+                                                                        batch_size, l,
+                                                                        device, Lambda, nc)
+                    disc_cost = out_fake - out_real + gradient_penalty
+                    disc_cost.backward()
+                    optimizer.step()
             except Exception as e:
                 print(f"\nERROR in discriminator training: {str(e)}")
                 raise
-                # perform permutation + reshape to turn volume into batch of 2D images to pass to D
-                fake_data_perm = fake_data.permute(0, d1, 1, d2, d3).reshape(l * D_batch_size, nc, l, l)
-                out_fake = netD(fake_data_perm).mean()
-                gradient_penalty = util.calc_gradient_penalty(netD, real_data, fake_data_perm[:batch_size],
-                                                                      batch_size, l,
-                                                                      device, Lambda, nc)
-                disc_cost = out_fake - out_real + gradient_penalty
-                disc_cost.backward()
-                optimizer.step()
             #logs for plotting
             disc_real_log.append(out_real.item())
             disc_fake_log.append(out_fake.item())
             Wass_log.append(out_real.item() - out_fake.item())
             gp_log.append(gradient_penalty.item())
+
             ### Generator Training
             if i % int(critic_iters) == 0:
                 print("    Training generator...", end='\r')
@@ -160,22 +160,22 @@ def train(pth, imtype, datatype, real_data, Disc, Gen, nc, l, nz, sf):
                     errG = 0
                     noise = torch.randn(batch_size, nz, lz,lz,lz, device=device)
                     fake = netG(noise)
+
+                    for dim, (netD, d1, d2, d3) in enumerate(
+                            zip(netDs, [2, 3, 4], [3, 2, 2], [4, 4, 3])):
+                        if isotropic:
+                            #only need one D
+                            netD = netDs[0]
+                        # permute and reshape to feed to disc
+                        fake_data_perm = fake.permute(0, d1, 1, d2, d3).reshape(l * batch_size, nc, l, l)
+                        output = netD(fake_data_perm)
+                        errG -= output.mean()
+                    # Calculate gradients for G
+                    errG.backward()
+                    optG.step()
                 except Exception as e:
                     print(f"\nERROR in generator training: {str(e)}")
                     raise
-
-                for dim, (netD, d1, d2, d3) in enumerate(
-                        zip(netDs, [2, 3, 4], [3, 2, 2], [4, 4, 3])):
-                    if isotropic:
-                        #only need one D
-                        netD = netDs[0]
-                    # permute and reshape to feed to disc
-                    fake_data_perm = fake.permute(0, d1, 1, d2, d3).reshape(l * batch_size, nc, l, l)
-                    output = netD(fake_data_perm)
-                    errG -= output.mean()
-                    # Calculate gradients for G
-                errG.backward()
-                optG.step()
 
             # Output training stats & show imgs
             if i % 25 == 0:
