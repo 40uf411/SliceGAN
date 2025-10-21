@@ -121,7 +121,7 @@ def train(pth, imtype, datatype, real_data, Disc, Gen, nc, l, nz, sf, verbose=Fa
         print(f"\nEpoch {epoch+1}/{num_epochs}")  # Always print epoch progress
         # sample data for each direction
         for i, (datax, datay, dataz) in enumerate(zip(dataloaderx, dataloadery, dataloaderz), 1):
-            if verbose and i % 10 == 0:  # Print every 10 iterations if verbose
+            if verbose and i % 3000 == 0:  # Print every 3000 iterations if verbose
                 print(f"  Batch {i}")
             dataset = [datax, datay, dataz]
             ### Initialise
@@ -157,9 +157,9 @@ def train(pth, imtype, datatype, real_data, Disc, Gen, nc, l, nz, sf, verbose=Fa
                     disc_cost = out_fake - out_real + gradient_penalty
                     disc_cost.backward()
                     optimizer.step()
-                    
-                    # Print losses every batch when not verbose, or every 10 batches when verbose
-                    if not verbose or (verbose and i % 10 == 0):
+
+                    # Print losses every batch when not verbose, or every 3000 batches when verbose
+                    if not verbose or (verbose and i % 3000 == 0):
                         print(f"Epoch [{epoch+1}/{num_epochs}], Batch [{i}], D_Loss: {disc_cost.item():.4f}, "
                               f"Wasserstein Distance: {(out_real.item() - out_fake.item()):.4f}, "
                               f"GP: {gradient_penalty.item():.4f}")
@@ -199,40 +199,40 @@ def train(pth, imtype, datatype, real_data, Disc, Gen, nc, l, nz, sf, verbose=Fa
                     print(f"\nERROR in generator training: {str(e)}")
                     raise
 
-            # Output training stats & show imgs
-            if i % 25 == 0:
-                if verbose:
-                    print("\n=== Saving Checkpoint & Generating Samples ===")
-                try:
-                    netG.eval()
-                    with torch.no_grad():
-                        if verbose:
-                            print("  Saving model checkpoints...")
-                        torch.save(netG.state_dict(), pth + '_Gen.pt')
-                        torch.save(netD.state_dict(), pth + '_Disc.pt')
-                        
-                        if verbose:
-                            print("  Generating sample images...")
-                        noise = torch.randn(1, nz,lz,lz,lz, device=device)
-                        img = netG(noise)
-                        
-                        ###Print progress
-                        ## calc ETA
-                        steps = len(dataloaderx)
-                        if verbose:
-                            util.calc_eta(steps, time.time(), start, i, epoch, num_epochs)
-                        
-                            print("  Saving visualizations...")
-                        ###save example slices
-                        util.test_plotter(img, 5, imtype, pth)
-                        # plotting graphs
-                        util.graph_plot([disc_real_log, disc_fake_log], ['real', 'perp'], pth, 'LossGraph')
-                        util.graph_plot([Wass_log], ['Wass Distance'], pth, 'WassGraph')
-                        util.graph_plot([gp_log], ['Gradient Penalty'], pth, 'GpGraph')
-                except Exception as e:
-                    print(f"\nERROR during checkpoint/visualization: {str(e)}")  # Always print errors
-                    raise
-                
-                if verbose:
-                    print("  Resuming training...")
-                netG.train()
+        # Output training stats & show imgs
+        if epoch % 25 == 0:
+            if verbose:
+                print("\n=== Saving Checkpoint & Generating Samples ===")
+            try:
+                netG.eval()
+                with torch.no_grad():
+                    if verbose:
+                        print("  Saving model checkpoints...")
+                    torch.save(netG.state_dict(), pth + '_Gen.pt')
+                    torch.save(netD.state_dict(), pth + '_Disc.pt')
+                    
+                    if verbose:
+                        print("  Generating sample images...")
+                    noise = torch.randn(1, nz,lz,lz,lz, device=device)
+                    img = netG(noise)
+                    
+                    ###Print progress
+                    ## calc ETA
+                    steps = len(dataloaderx)
+                    if verbose:
+                        util.calc_eta(steps, time.time(), start, 0, epoch, num_epochs)
+                    
+                        print("  Saving visualizations...")
+                    ###save example slices
+                    util.test_plotter(img, 5, imtype, pth)
+                    # plotting graphs
+                    util.graph_plot([disc_real_log, disc_fake_log], ['real', 'perp'], pth, 'LossGraph')
+                    util.graph_plot([Wass_log], ['Wass Distance'], pth, 'WassGraph')
+                    util.graph_plot([gp_log], ['Gradient Penalty'], pth, 'GpGraph')
+            except Exception as e:
+                print(f"\nERROR during checkpoint/visualization: {str(e)}")  # Always print errors
+                raise
+            
+            if verbose:
+                print("  Resuming training...")
+            netG.train()
