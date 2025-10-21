@@ -200,7 +200,7 @@ def train(pth, imtype, datatype, real_data, Disc, Gen, nc, l, nz, sf, verbose=Fa
                     raise
 
         # Output training stats & show imgs
-        if epoch % 25 == 0:
+        if epoch % 5 == 0:
             if verbose:
                 print("\n=== Saving Checkpoint & Generating Samples ===")
             try:
