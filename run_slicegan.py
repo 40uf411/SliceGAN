@@ -30,7 +30,7 @@ image_type = 'grayscale'
 img_channels = 1
 # define data type (for colour/grayscale images, must be 'colour' / '
 # greyscale. nphase can be, 'tif2D', 'png', 'jpg', tif3D, 'array')
-data_type = 'tif3D'
+data_type = 'tif2D'
 # Path to your data. One string for isotrpic, 3 for anisotropic
 data_path = ['/export/home/aaouf/workspace/images/lemmens_slices/slice_x_center+0.tiff',
              '/export/home/aaouf/workspace/images/lemmens_slices/slice_y_center+0.tiff',
