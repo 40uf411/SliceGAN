@@ -6,6 +6,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import tifffile
 import sys
+import datetime
 ## Training Utils
 
 def mkdr(proj,proj_dir,Training):
@@ -18,22 +19,16 @@ def mkdr(proj,proj_dir,Training):
     """
     pth = proj_dir + '/' + proj
     if Training:
-        try:
-            os.mkdir(pth)
-            return pth + '/' + proj
-        except FileExistsError:
-            print('Directory', pth, 'already exists. Enter new project name or hit enter to overwrite')
-            new = input()
-            if new == '':
-                return pth + '/' + proj
-            else:
-                pth = mkdr(new, proj_dir, Training)
-                return pth
-        except FileNotFoundError:
-            print('The specifified project directory ' + proj_dir + ' does not exist. Please change to a directory that does exist and again')
-            sys.exit()
+        if not os.path.exists(pth):
+            os.makedirs(pth)
+            return pth
+        else:
+            dt = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            new_pth = f"{pth}_{dt}"
+            os.makedirs(new_pth)
+            return new_pth
     else:
-        return pth + '/' + proj
+        return pth
 
 
 def weights_init(m):
