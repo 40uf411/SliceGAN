@@ -21,15 +21,24 @@ def train(pth, imtype, datatype, real_data, Disc, Gen, nc, l, nz, sf):
     :param sf: scale factor for training data
     :return:
     """
+    print("\n=== Starting SliceGAN Training ===")
+    print(f"Parameters: image_type={imtype}, data_type={datatype}, channels={nc}, size={l}, latent_size={nz}, scale={sf}")
     if len(real_data) == 1:
         real_data *= 3
         isotropic = True
     else:
         isotropic = False
 
-    print('Loading Dataset...')
-    dataset_xyz = preprocessing.batch(real_data, datatype, l, sf)
+    print('\n=== Loading Dataset... ===')
+    print(f"Data paths: {real_data}")
+    try:
+        dataset_xyz = preprocessing.batch(real_data, datatype, l, sf)
+        print(f"Dataset loaded successfully. Shape: {[len(d) for d in dataset_xyz]}")
+    except Exception as e:
+        print(f"ERROR loading dataset: {str(e)}")
+        raise
 
+    print("\n=== Initializing Training Parameters ===")
     ## Constants for NNs
     matplotlib.use('Agg')
     ngpu = 1
@@ -60,49 +69,75 @@ def train(pth, imtype, datatype, real_data, Disc, Gen, nc, l, nz, sf):
     dataloaderz = torch.utils.data.DataLoader(dataset_xyz[2], batch_size=batch_size,
                                               shuffle=True, num_workers=workers)
 
-    # Create the Genetator network
-    netG = Gen().to(device)
-    if ('cuda' in str(device)) and (ngpu > 1):
-        netG = nn.DataParallel(netG, list(range(ngpu)))
-    optG = optim.Adam(netG.parameters(), lr=lrg, betas=(beta1, beta2))
+    print("\n=== Creating Generator Network ===")
+    try:
+        # Create the Generator network
+        netG = Gen().to(device)
+        if ('cuda' in str(device)) and (ngpu > 1):
+            netG = nn.DataParallel(netG, list(range(ngpu)))
+        optG = optim.Adam(netG.parameters(), lr=lrg, betas=(beta1, beta2))
+        print("Generator created successfully")
+    except Exception as e:
+        print(f"ERROR creating generator: {str(e)}")
+        raise
 
+    print("\n=== Creating Discriminator Networks ===")
     # Define 1 Discriminator and optimizer for each plane in each dimension
     netDs = []
     optDs = []
-    for i in range(3):
-        netD = Disc()
-        netD = (nn.DataParallel(netD, list(range(ngpu)))).to(device)
-        netDs.append(netD)
-        optDs.append(optim.Adam(netDs[i].parameters(), lr=lrd, betas=(beta1, beta2)))
+    try:
+        for i in range(3):
+            print(f"Creating discriminator {i+1}/3...")
+            netD = Disc()
+            netD = (nn.DataParallel(netD, list(range(ngpu)))).to(device)
+            netDs.append(netD)
+            optDs.append(optim.Adam(netDs[i].parameters(), lr=lrd, betas=(beta1, beta2)))
+        print("All discriminators created successfully")
+    except Exception as e:
+        print(f"ERROR creating discriminator {i+1}: {str(e)}")
+        raise
 
     disc_real_log = []
     disc_fake_log = []
     gp_log = []
     Wass_log = []
 
-    print("Starting Training Loop...")
+    print("\n=== Starting Training Loop ===")
+    print(f"Training for {num_epochs} epochs")
     # For each epoch
     start = time.time()
-    for epoch in range(num_epochs):
-        # sample data for each direction
-        for i, (datax, datay, dataz) in enumerate(zip(dataloaderx, dataloadery, dataloaderz), 1):
-            dataset = [datax, datay, dataz]
-            ### Initialise
-            ### Discriminator
-            ## Generate fake image batch with G
-            noise = torch.randn(D_batch_size, nz, lz,lz,lz, device=device)
-            fake_data = netG(noise).detach()
-            # for each dim (d1, d2 and d3 are used as permutations to make 3D volume into a batch of 2D images)
-            for dim, (netD, optimizer, data, d1, d2, d3) in enumerate(
-                    zip(netDs, optDs, dataset, [2, 3, 4], [3, 2, 2], [4, 4, 3])):
-                if isotropic:
-                    netD = netDs[0]
-                    optimizer = optDs[0]
-                netD.zero_grad()
-                ##train on real images
-                real_data = data[0].to(device)
-                out_real = netD(real_data).view(-1).mean()
-                ## train on fake images
+    try:
+        for epoch in range(num_epochs):
+            print(f"\nEpoch {epoch+1}/{num_epochs}")
+            # sample data for each direction
+            for i, (datax, datay, dataz) in enumerate(zip(dataloaderx, dataloadery, dataloaderz), 1):
+                if i % 10 == 0:  # Print every 10 iterations
+                    print(f"  Batch {i}")
+                dataset = [datax, datay, dataz]
+                ### Initialise
+                ### Discriminator
+                print("    Training discriminator...", end='\r')
+                ## Generate fake image batch with G
+            try:
+                print("    Generating fake data batch...", end='\r')
+                noise = torch.randn(D_batch_size, nz, lz,lz,lz, device=device)
+                fake_data = netG(noise).detach()
+                
+                # for each dim (d1, d2 and d3 are used as permutations to make 3D volume into a batch of 2D images)
+                for dim, (netD, optimizer, data, d1, d2, d3) in enumerate(
+                        zip(netDs, optDs, dataset, [2, 3, 4], [3, 2, 2], [4, 4, 3])):
+                    print(f"    Training discriminator {dim+1}/3...", end='\r')
+                    if isotropic:
+                        netD = netDs[0]
+                        optimizer = optDs[0]
+                    netD.zero_grad()
+                    ##train on real images
+                    real_data = data[0].to(device)
+                    out_real = netD(real_data).view(-1).mean()
+                    ## train on fake images
+            except Exception as e:
+                print(f"\nERROR in discriminator training: {str(e)}")
+                raise
                 # perform permutation + reshape to turn volume into batch of 2D images to pass to D
                 fake_data_perm = fake_data.permute(0, d1, 1, d2, d3).reshape(l * D_batch_size, nc, l, l)
                 out_fake = netD(fake_data_perm).mean()
@@ -119,10 +154,15 @@ def train(pth, imtype, datatype, real_data, Disc, Gen, nc, l, nz, sf):
             gp_log.append(gradient_penalty.item())
             ### Generator Training
             if i % int(critic_iters) == 0:
-                netG.zero_grad()
-                errG = 0
-                noise = torch.randn(batch_size, nz, lz,lz,lz, device=device)
-                fake = netG(noise)
+                print("    Training generator...", end='\r')
+                try:
+                    netG.zero_grad()
+                    errG = 0
+                    noise = torch.randn(batch_size, nz, lz,lz,lz, device=device)
+                    fake = netG(noise)
+                except Exception as e:
+                    print(f"\nERROR in generator training: {str(e)}")
+                    raise
 
                 for dim, (netD, d1, d2, d3) in enumerate(
                         zip(netDs, [2, 3, 4], [3, 2, 2], [4, 4, 3])):
@@ -139,20 +179,33 @@ def train(pth, imtype, datatype, real_data, Disc, Gen, nc, l, nz, sf):
 
             # Output training stats & show imgs
             if i % 25 == 0:
-                netG.eval()
-                with torch.no_grad():
-                    torch.save(netG.state_dict(), pth + '_Gen.pt')
-                    torch.save(netD.state_dict(), pth + '_Disc.pt')
-                    noise = torch.randn(1, nz,lz,lz,lz, device=device)
-                    img = netG(noise)
-                    ###Print progress
-                    ## calc ETA
-                    steps = len(dataloaderx)
-                    util.calc_eta(steps, time.time(), start, i, epoch, num_epochs)
-                    ###save example slices
-                    util.test_plotter(img, 5, imtype, pth)
-                    # plotting graphs
-                    util.graph_plot([disc_real_log, disc_fake_log], ['real', 'perp'], pth, 'LossGraph')
-                    util.graph_plot([Wass_log], ['Wass Distance'], pth, 'WassGraph')
-                    util.graph_plot([gp_log], ['Gradient Penalty'], pth, 'GpGraph')
+                print("\n=== Saving Checkpoint & Generating Samples ===")
+                try:
+                    netG.eval()
+                    with torch.no_grad():
+                        print("  Saving model checkpoints...")
+                        torch.save(netG.state_dict(), pth + '_Gen.pt')
+                        torch.save(netD.state_dict(), pth + '_Disc.pt')
+                        
+                        print("  Generating sample images...")
+                        noise = torch.randn(1, nz,lz,lz,lz, device=device)
+                        img = netG(noise)
+                        
+                        ###Print progress
+                        ## calc ETA
+                        steps = len(dataloaderx)
+                        util.calc_eta(steps, time.time(), start, i, epoch, num_epochs)
+                        
+                        print("  Saving visualizations...")
+                        ###save example slices
+                        util.test_plotter(img, 5, imtype, pth)
+                        # plotting graphs
+                        util.graph_plot([disc_real_log, disc_fake_log], ['real', 'perp'], pth, 'LossGraph')
+                        util.graph_plot([Wass_log], ['Wass Distance'], pth, 'WassGraph')
+                        util.graph_plot([gp_log], ['Gradient Penalty'], pth, 'GpGraph')
+                except Exception as e:
+                    print(f"\nERROR during checkpoint/visualization: {str(e)}")
+                    raise
+                
+                print("  Resuming training...")
                 netG.train()
