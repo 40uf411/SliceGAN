@@ -14,34 +14,27 @@ def batch(data,type,l, sf):
     Testing = False
     if type in ['png', 'jpg', 'tif2D']:
         datasetxyz = []
-        batch_size = 1000  # Reduced batch size
-        for img_path in data:
-            img = plt.imread(img_path) if type != 'tif2D' else tifffile.imread(img_path)
+        for img in data:
+            img = plt.imread(img) if type != 'tif2D' else tifffile.imread(img)
             if len(img.shape)>2:
                 img = img[:,:,0]
             img = img[::sf,::sf]
-            x_max, y_max = img.shape[:]
+            x_max, y_max= img.shape[:]
             phases = np.unique(img)
-            total_samples = 32 * 900
-            
-            # Process in smaller batches
-            for batch_start in range(0, total_samples, batch_size):
-                batch_end = min(batch_start + batch_size, total_samples)
-                current_batch_size = batch_end - batch_start
-                batch_data = np.zeros([current_batch_size, len(phases), l, l], dtype=np.float32)
-                
-                for i in range(current_batch_size):
-            if Testing and batch_start == 0:
-                for j in range(min(7, current_batch_size)):
-                    plt.imshow(batch_data[j, 0, :, :]+2*batch_data[j, 1, :, :])
+            data = np.empty([32 * 900, len(phases), l, l])
+            for i in range(32 * 900):
+                x = np.random.randint(1, x_max - l-1)
+                y = np.random.randint(1, y_max - l-1)
+                # create one channel per phase for one hot encoding
+                for cnt, phs in enumerate(phases):
+                    img1 = np.zeros([l, l])
+                    img1[img[x:x + l, y:y + l] == phs] = 1
+                    data[i, cnt, :, :] = img1
+
+            if Testing:
+                for j in range(7):
+                    plt.imshow(data[j, 0, :, :]+2*data[j, 1, :, :])
                     plt.pause(0.3)
-                    plt.show()
-                    plt.clf()
-                plt.close()
-            batch_data = torch.FloatTensor(batch_data)
-            dataset = torch.utils.data.TensorDataset(batch_data)
-            datasetxyz.append(dataset)
-            del batch_data  # Explicitly free memory
                     plt.show()
                     plt.clf()
                 plt.close()
