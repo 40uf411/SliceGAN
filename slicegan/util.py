@@ -207,4 +207,174 @@ def test_img(pth, imtype, netG, nz = 64, lf = 4, periodic=False):
 
 
 
+import torch
+import numpy as np
+import matplotlib.pyplot as plt
+import random
+from slicegan import model, networks, util
+import torch
+import numpy as np
+import matplotlib.pyplot as plt
+import random
 
+import torch
+import numpy as np
+import matplotlib.pyplot as plt
+import random
+import tifffile
+import time
+# from slicegan import preprocessing, util # Assuming these are available
+# from slicegan.util import post_proc # No longer needed if we use GPU version
+
+
+def post_proc_gpu(raw_tensor, imtype):
+    """
+    Optimized GPU-based post-processing for a generated tensor.
+    Assumes grayscale output and scales to 0-255 integers.
+    """
+    processed = raw_tensor.detach()
+
+    # Generic Grayscale Optimization: Scale and convert to integer
+    if imtype == 'grayscale':
+        # Assuming Tanh (-1 to 1) or Sigmoid (0 to 1) output
+        if processed.min() >= -1.0 and processed.max() <= 1.0:
+            processed = (processed + 1.0) / 2.0 * 255.0
+        elif processed.min() >= 0.0 and processed.max() <= 1.0:
+            processed = processed * 255.0
+
+        processed = torch.clamp(processed, 0, 255).to(torch.int16)
+
+    # Remove the channel dimension (C)
+    processed = processed.squeeze(1)
+
+    return processed
+
+
+
+
+def sample_and_analyze_optimized(pth, imtype, netG_class, nz, lf, N_samples=16, micro_batch_size=4):
+    """
+    Optimized function for generating, analyzing, and saving samples.
+    Performs generation, post-processing, and concatenation entirely on the GPU.
+    Includes verbose print statements to track execution flow.
+    """
+    start_total = time.time()
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    print(f"\n--- Starting Optimized Sampling and Analysis ---")
+    print(f"Target Device: {device}")
+    print(f"Total Samples: {N_samples}, Micro-Batch Size: {micro_batch_size}, Volume Size: {lf}x{lf}x{lf}")
+
+    # 1. Setup Generator
+    try:
+        start_load = time.time()
+        generator = netG_class().to(device)
+        generator.load_state_dict(torch.load(pth + '_Gen.pt', map_location=device))
+        generator.eval()
+        print(f"STATUS: Generator loaded in {time.time() - start_load:.4f}s.")
+    except Exception as e:
+        print(f"ERROR: Could not load generator: {e}")
+        return None
+
+    all_raw_tensors = [] # Stores tensors on the GPU
+
+    # 2. Sample N Images using Micro-Batching (All on GPU)
+    print(f"STATUS: Entering generation loop...")
+    with torch.no_grad():
+        for i in range(0, N_samples, micro_batch_size):
+            start_batch = time.time()
+            current_batch_size = min(micro_batch_size, N_samples - i)
+            batch_start_index = i
+
+            # Forward Pass
+            print(f"  BATCH {batch_start_index}/{N_samples}: Generating noise on GPU...")
+            noise = torch.randn(current_batch_size, nz, lf, lf, lf, device=device)
+
+            print(f"  BATCH {batch_start_index}/{N_samples}: Starting forward pass on GPU...")
+            if device.type == 'cuda': torch.cuda.synchronize()
+            start_forward = time.time()
+            raw_batch = generator(noise)
+            if device.type == 'cuda': torch.cuda.synchronize()
+            print(f"  BATCH {batch_start_index}/{N_samples}: Forward pass finished in {time.time() - start_forward:.4f}s. Output shape: {raw_batch.shape}")
+
+            # Post-Processing
+            print(f"  BATCH {batch_start_index}/{N_samples}: Starting post-processing on GPU...")
+            start_postproc = time.time()
+            processed_batch = post_proc_gpu(raw_batch, imtype) # Output: (B, D, H, W) on GPU
+            if device.type == 'cuda': torch.cuda.synchronize()
+            print(f"  BATCH {batch_start_index}/{N_samples}: Post-processing finished in {time.time() - start_postproc:.4f}s.")
+
+            # Store and Print Status
+            all_raw_tensors.append(processed_batch)
+            print(f"  BATCH {batch_start_index}/{N_samples}: Batch finished in {time.time() - start_batch:.4f}s. Stored {len(all_raw_tensors) * current_batch_size}/{N_samples} total.")
+
+    # 3. Concatenate and Transfer (The point of max data movement)
+    print("\nSTATUS: Concatenating all tensors on GPU...")
+    start_concat = time.time()
+    concatenated_gpu_tensor = torch.cat(all_raw_tensors, dim=0)
+    if device.type == 'cuda': torch.cuda.synchronize()
+    print(f"STATUS: Concatenation finished in {time.time() - start_concat:.4f}s. Starting GPU -> CPU transfer...")
+
+    start_transfer = time.time()
+    concatenated_samples = concatenated_gpu_tensor.cpu().numpy()
+    end_transfer = time.time()
+    print(f"STATUS: GPU-to-CPU transfer complete in {end_transfer - start_transfer:.4f}s. Final NumPy shape: {concatenated_samples.shape}")
+
+    # 4. Save the concatenated images as a single numpy array
+    start_save_npy = time.time()
+    np.save(pth + f'_N{N_samples}_samples_LF{lf}.npy', concatenated_samples)
+    print(f"STATUS: NumPy array saved in {time.time() - start_save_npy:.4f}s to {pth}_N{N_samples}_samples_LF{lf}.npy")
+
+    # 5. Visualization and Analysis (CPU-Bound Operations)
+
+    if N_samples < 2:
+        print("STATUS: Need at least 2 samples for visualization, skipping analysis plots.")
+        return concatenated_samples
+
+    rand_indices = random.sample(range(N_samples), 2)
+    sample_a = concatenated_samples[rand_indices[0]]
+    sample_b = concatenated_samples[rand_indices[1]]
+
+    # --- Histogram Plot ---
+    start_hist = time.time()
+    plt.figure(figsize=(8, 6))
+    hist_a, bins = np.histogram(sample_a.flatten(), bins=256, range=(0, 256))
+    hist_b, _ = np.histogram(sample_b.flatten(), bins=256, range=(0, 256))
+    avg_hist = (hist_a + hist_b) / 2
+    bin_centers = (bins[:-1] + bins[1:]) / 2
+    plt.plot(bin_centers, avg_hist)
+    plt.title(f'Average Histogram (Indices: {rand_indices[0]}, {rand_indices[1]})')
+    plt.xlabel('Voxel Value'); plt.ylabel('Frequency')
+    plt.savefig(pth + '_Avg_Histogram.png'); plt.close()
+    print(f"STATUS: Histogram plot saved in {time.time() - start_hist:.4f}s.")
+
+    # --- 6x6 Slice Grid Plot ---
+    start_slice_plot = time.time()
+    n_slices_to_plot = 6
+
+    def plot_slices(sample, fig_title, save_name):
+        L = sample.shape[0]
+        indices = np.linspace(0, L - 1, n_slices_to_plot, dtype=int)
+        fig, axes = plt.subplots(3, n_slices_to_plot, figsize=(15, 7.5))
+        fig.suptitle(fig_title, fontsize=16)
+        directions = ['X-Normal (YZ-plane)', 'Y-Normal (XZ-plane)', 'Z-Normal (XY-plane)']
+
+        for d, direction in enumerate(directions):
+            for i, index in enumerate(indices):
+                ax = axes[d, i]
+                if d == 0: slice_data = sample[index, :, :]
+                elif d == 1: slice_data = sample[:, index, :]
+                else: slice_data = sample[:, :, index]
+
+                ax.imshow(slice_data, cmap='gray'); ax.axis('off')
+                if i == 0: ax.set_title(direction, fontsize=10, loc='left')
+
+        plt.tight_layout(rect=[0, 0, 1, 0.96])
+        plt.savefig(pth + save_name)
+        plt.close(fig)
+
+    plot_slices(sample_a, f'Sample A (Index {rand_indices[0]})', '_SampleA_Slices.png')
+    plot_slices(sample_b, f'Sample B (Index {rand_indices[1]})', '_SampleB_Slices.png')
+    print(f"STATUS: Slice grid plots saved in {time.time() - start_slice_plot:.4f}s.")
+
+    print(f"\n--- Total Execution Time: {time.time() - start_total:.4f}s ---")
+    return concatenated_samples

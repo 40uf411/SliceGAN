@@ -15,7 +15,7 @@ Project_dir = 'Trained_Generators'
 # Simple configuration: replace argparse with a small Config class.
 # Set `training` to 1 to run training, or 0 to run testing.
 class Config:
-    training = True
+    training = False
 
 config = Config()
 Training = config.training
@@ -32,9 +32,9 @@ img_channels = 1
 # greyscale. nphase can be, 'tif2D', 'png', 'jpg', tif3D, 'array')
 data_type = 'tif2D'
 # Path to your data. One string for isotrpic, 3 for anisotropic
-data_path = ['/export/home/aaouf/workspace/images/lemmens_slices/slice_x_center+0.tiff',
-             '/export/home/aaouf/workspace/images/lemmens_slices/slice_y_center+0.tiff',
-             '/export/home/aaouf/workspace/images/lemmens_slices/slice_z_center+0.tiff']
+data_path = ['/home/ucl/elen/aaouf/lemmens_slices/slice_x_center+0.tiff',
+             '/home/ucl/elen/aaouf/lemmens_slices/slice_y_center+0.tiff',
+             '/home/ucl/elen/aaouf/lemmens_slices/slice_z_center+0.tiff']
 
 ## Network Architectures
 # Training image size, no. channels and scale factor vs raw data
@@ -60,5 +60,23 @@ netD, netG = networks.slicegan_rc_nets(Project_path, Training, image_type, dk, d
 if Training:
     model.train(Project_path, image_type, data_type, data_path, netD, netG, img_channels, img_size, z_channels, scale_factor)
 else:
-    img, raw, netG = util.test_img(Project_path, image_type, netG(), z_channels, lf=8, periodic=[0, 1, 1])
+    # Configuration for the new sampling function
+    N_SAMPLES = 2  # Total number of samples you want to generate
+    MICRO_BATCH = 1 # Generate 4 samples at a time to save memory
+    LENGTH_FACTOR = 4 # Use lf=64 or smaller, based on previous memory fix
 
+    # The netG passed here is the *class* (networks.Generator), which the
+    # sample_and_analyze function will instantiate and load weights for.
+    final_samples = util.sample_and_analyze_optimized(
+        Project_path, 
+        image_type, 
+        netG, # Note: Pass the class, not netG()
+        z_channels, 
+        LENGTH_FACTOR,  
+        N_samples=N_SAMPLES,
+        micro_batch_size=MICRO_BATCH
+    )
+
+    # Optional: Add any logic to handle the final_samples numpy array here if needed.
+    if final_samples is not None:
+         print(f"Sampling and analysis complete. Final array shape: {final_samples.shape}")

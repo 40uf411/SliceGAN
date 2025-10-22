@@ -16,7 +16,14 @@ def batch(data,type,l, sf):
         datasetxyz = []
         for img in data:
             img = plt.imread(img) if type != 'tif2D' else tifffile.imread(img)
-            print(img.shape)
+            if img.ndim > 2:
+                img = img[..., 0]
+            img = img.astype(np.float32)
+            minv, maxv = float(img.min()), float(img.max())
+            if maxv > minv:
+                img = (img - minv) / (maxv - minv)
+            else:
+                img = np.zeros_like(img, dtype=np.float32) 
             if len(img.shape)>2:
                 print('converting to grayscale')
                 img = img[:,:,0]
