@@ -11,7 +11,7 @@ def batch(data,type,l, sf):
     :param sf: scale factor
     :return:
     """
-    Testing = False
+    Testing = True
     if type in ['png', 'jpg', 'tif2D']:
         datasetxyz = []
         for img in data:
@@ -46,11 +46,23 @@ def batch(data,type,l, sf):
                 data[i, 0] = patch
 
             if Testing:
-                for j in range(7):
-                    plt.imshow(data[j, 0, :, :])
-                    plt.pause(0.3)
-                    plt.show()
-                    plt.clf()
+                # Create a 6x6 subplot grid of random images
+                fig, axes = plt.subplots(6, 6, figsize=(12, 12))
+                random_indices = np.random.choice(data.shape[0], size=36, replace=False)
+                for idx, ax in enumerate(axes.flat):
+                    ax.imshow(data[random_indices[idx], 0, :, :], cmap='gray')
+                    ax.axis('off')
+                plt.tight_layout()
+                plt.savefig('training_samples_grid.png', dpi=150, bbox_inches='tight')
+                plt.close()
+                # save the average histogram of the first 10 samples
+                plt.figure()
+                tmp_data = data[:10, 0, :, :].reshape(-1)
+                plt.hist(tmp_data, bins=50, density=True)
+                plt.title('Histogram of first 10 samples')
+                plt.xlabel('Pixel Intensity')
+                plt.ylabel('Density')
+                plt.savefig('training_samples_histogram.png', dpi=150, bbox_inches='tight')
                 plt.close()
 
             data = torch.FloatTensor(data)
