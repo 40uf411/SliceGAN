@@ -139,7 +139,7 @@ def train(pth, imtype, datatype, real_data, Disc, Gen, nc, l, nz, sf, verbose=Fa
                 plt.figure(figsize=(12, 12))
                 for i in range(36):
                     plt.subplot(6, 6, i + 1)
-                    plt.imshow(fake_data[i, 0, :, :].cpu().numpy(), cmap='gray')
+                    plt.imshow(fake_data[0, 0, i, :, :].cpu().numpy(), cmap='gray')
                     plt.axis('off')
                 plt.tight_layout()
                 plt.savefig('training_samples_grid.png', dpi=150, bbox_inches='tight')
