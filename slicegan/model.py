@@ -134,7 +134,25 @@ def train(pth, imtype, datatype, real_data, Disc, Gen, nc, l, nz, sf, verbose=Fa
                     print("    Generating fake data batch...", end='\r')
                 noise = torch.randn(D_batch_size, nz, lz,lz,lz, device=device)
                 fake_data = netG(noise).detach()
-                
+                # save a compact grid of 6x6 of the 1st fake images
+                import matplotlib.pyplot as plt
+                plt.figure(figsize=(12, 12))
+                for i in range(36):
+                    plt.subplot(6, 6, i + 1)
+                    plt.imshow(fake_data[i, 0, :, :].cpu().numpy(), cmap='gray')
+                    plt.axis('off')
+                plt.tight_layout()
+                plt.savefig('training_samples_grid.png', dpi=150, bbox_inches='tight')
+                plt.close()
+                # save hisogram of the first 10 fake images
+                plt.figure()
+                tmp_data = fake_data[:10, 0, :, :].reshape(-1)
+                plt.hist(tmp_data, bins=50, density=True)
+                plt.title('Histogram of first 10 fake images')
+                plt.xlabel('Pixel Intensity')
+                plt.ylabel('Density')
+                plt.savefig('training_samples_histogram.png', dpi=150, bbox_inches='tight')
+                plt.close()
                 # for each dim (d1, d2 and d3 are used as permutations to make 3D volume into a batch of 2D images)
                 for dim, (netD, optimizer, data, d1, d2, d3) in enumerate(
                         zip(netDs, optDs, dataset, [2, 3, 4], [3, 2, 2], [4, 4, 3])):
